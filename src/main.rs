@@ -99,29 +99,44 @@ async fn upload_program(
     mut multipart: Multipart,
     db_pool: Arc<Pool<sqlx::Postgres>>,
 ) -> Result<&'static str, StatusCode> {
+    let mut version = 0;
+    let mut program_data = None;
+
     while let Some(field) = multipart.next_field().await.unwrap() {
-        let name = field.name();
-        println!("Field name: {:?}", name);
-        let data = field.text().await.unwrap();
-        // println!("Field data: {:?}", data);
-        let casm: CasmContractClass = serde_json::from_str(&data).unwrap();
-        let program_hash = casm.compiled_class_hash().to_string();
-
-        // Generate a UUID for the id field
-        let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
-
-        let result = sqlx::query!(
-            "INSERT INTO programs (id, hash, code) VALUES ($1, $2, $3)",
-            id,
-            program_hash,
-            data.as_bytes()
-        )
-        .execute(&*db_pool)
-        .await;
-
-        if result.is_err() {
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        let name = field.name().unwrap_or_default().to_string();
+        if name == "version" {
+            version = field.text().await.unwrap().parse::<i32>().unwrap_or(0);
+        } else if name == "program" {
+            program_data = Some(field.bytes().await.unwrap());
         }
+    }
+
+    if let Some(data) = program_data {
+        println!("Uploading program with version {}", version);
+        if version == 1 {
+            let casm: CasmContractClass = serde_json::from_slice(&data).unwrap();
+            let program_hash = casm.compiled_class_hash().to_string();
+            println!("Program hash: {}", program_hash);
+            // Generate a UUID for the id field
+            let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
+
+            let result = sqlx::query!(
+                "INSERT INTO programs (id, hash, code, version) VALUES ($1, $2, $3, $4)",
+                id,
+                program_hash,
+                data.as_ref(),
+                version
+            )
+            .execute(&*db_pool)
+            .await;
+
+            if result.is_err() {
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+        // Add other version handling if needed
+    } else {
+        return Err(StatusCode::BAD_REQUEST);
     }
 
     Ok("success")

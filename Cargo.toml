@@ -22,3 +22,4 @@ sqlx = { version = "0.5", features = [
 ] }
 dotenv = "0.15.0"
 uuid = { version = "1", features = ["v4"] }
+cairo-vm = { version = '0.7.0' }
