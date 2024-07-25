@@ -1,0 +1,24 @@
+[package]
+name = "program_registery"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7.5", features = ["multipart"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+tracing-subscriber = "0.3.18"
+tokio-postgres = { version = "0.7", features = ["with-uuid-0_8"] }
+bytes = "1.1"
+tokio-util = { version = "0.6", features = ["io"] }
+cairo-lang-starknet-classes = "2.6.4"
+serde_json = "1.0"
+starknet-types-core = "0.1.0"
+hyper = "1.4.1"
+sqlx = { version = "0.5", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+] }
+dotenv = "0.15.0"
+uuid = { version = "1", features = ["v4"] }
