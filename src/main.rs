@@ -7,6 +7,7 @@ use axum::{
     Router,
 };
 use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
+use cairo_vm::{program_hash::compute_program_hash_chain, types::program::Program};
 use dotenv::dotenv;
 use serde::Deserialize;
 use sqlx::Pool;
@@ -116,6 +117,7 @@ async fn upload_program(
         if version == 1 {
             let casm: CasmContractClass = serde_json::from_slice(&data).unwrap();
             let program_hash = casm.compiled_class_hash().to_string();
+
             println!("Program hash: {}", program_hash);
             // Generate a UUID for the id field
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
@@ -124,6 +126,35 @@ async fn upload_program(
                 "INSERT INTO programs (id, hash, code, version) VALUES ($1, $2, $3, $4)",
                 id,
                 program_hash,
+                data.as_ref(),
+                version
+            )
+            .execute(&*db_pool)
+            .await;
+
+            if result.is_err() {
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+
+        if version == 0 {
+            let program =
+            Program::from_bytes(&data, Some("main"))
+                .expect("Could not load program. Did you compile the sample programs? Run `make test` in the root directory.");
+            let stripped_program = program.get_stripped_program().unwrap();
+            let bootloader_version = 0;
+            let program_hash = compute_program_hash_chain(&stripped_program, bootloader_version)
+                .expect("Failed to compute program hash.");
+
+            let program_hash_hex = format!("{:#x}", program_hash);
+            println!("{}", program_hash_hex);
+            // Generate a UUID for the id field
+            let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
+
+            let result = sqlx::query!(
+                "INSERT INTO programs (id, hash, code, version) VALUES ($1, $2, $3, $4)",
+                id,
+                program_hash_hex,
                 data.as_ref(),
                 version
             )
