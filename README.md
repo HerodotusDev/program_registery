@@ -8,10 +8,11 @@ sqlx migrate run
 
 ## /upload-program
 
+Note: Cannot upload duplicated program
+
 ```sh
 curl --location 'http://127.0.0.1:3000/upload-program' \
 --form 'program=@"./hdp.json"' \
---form 'version="0"'
 ```
 
 response:
