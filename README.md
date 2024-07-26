@@ -1,4 +1,10 @@
-# Program Registrey
+# Program Registery
+
+The Program Registry is a server that accepts compiled Cairo programs (also known as CASM files), fetches the compiler version dynamically, computes the correct program hash, and stores the bytecode of the Cairo program along with the program hash.
+
+The program hash is a unique calculation of the program bytecode. Based on the compiler version, the computation might vary slightly. You can also retrieve the exact hash via the `cairo-run` command from [cairo-lang](https://github.com/starkware-libs/cairo-lang).
+
+Our main motivation is to have a registry of Cairo programs so that we can retrieve the compiled Cairo program using the given program hash.
 
 ## run migration
 
@@ -8,11 +14,10 @@ sqlx migrate run
 
 ## /upload-program
 
-Note: Cannot upload duplicated program
-
 ```sh
 curl --location 'http://127.0.0.1:3000/upload-program' \
 --form 'program=@"./hdp.json"' \
+--form 'version="0"'
 ```
 
 response:
