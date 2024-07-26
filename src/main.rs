@@ -101,17 +101,21 @@ async fn upload_program(
     mut multipart: Multipart,
     db_pool: Arc<Pool<sqlx::Postgres>>,
 ) -> Result<String, StatusCode> {
-    let mut version = 0;
+    let mut version: i32 = 0;
     let mut program_data = None;
     #[allow(unused_assignments)]
     let mut program_hash_hex = String::new();
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let name = field.name().unwrap_or_default().to_string();
-        if name == "version" {
-            version = field.text().await.unwrap().parse::<i32>().unwrap_or(0);
-        } else if name == "program" {
-            program_data = Some(field.bytes().await.unwrap());
+        if name == "program" {
+            let raw_data = field.bytes().await.unwrap();
+            let compiler_version = get_compiler_version(raw_data.to_vec()).unwrap();
+            println!("Compiler version: {}", compiler_version);
+            version = compiler_version.split('.').collect::<Vec<&str>>()[0]
+                .parse::<i32>()
+                .unwrap();
+            program_data = Some(raw_data);
         }
     }
 
@@ -139,9 +143,7 @@ async fn upload_program(
             if result.is_err() {
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
-        }
-
-        if version == 0 {
+        } else if version == 0 {
             let program =
                 Program::from_bytes(&data, Some("main")).expect("Could not load program.");
             let stripped_program = program.get_stripped_program().unwrap();
@@ -170,9 +172,21 @@ async fn upload_program(
         } else {
             return Err(StatusCode::BAD_REQUEST);
         }
-    } else {
-        return Err(StatusCode::BAD_REQUEST);
     }
 
     Ok(program_hash_hex)
+}
+
+fn get_compiler_version(bytes: Vec<u8>) -> Result<String, Box<dyn std::error::Error>> {
+    let json_str = String::from_utf8(bytes)?;
+
+    // Parse the JSON string to a serde_json::Value
+    let json_value: serde_json::Value = serde_json::from_str(&json_str)?;
+
+    // Access the "compiler_version" field and extract its value
+    if let Some(version) = json_value.get("compiler_version").and_then(|v| v.as_str()) {
+        Ok(version.to_string())
+    } else {
+        Err("compiler_version field not found or not a uint".into())
+    }
 }
