@@ -12,6 +12,7 @@ use dotenv::dotenv;
 use serde::Deserialize;
 use sqlx::Pool;
 use sqlx::{postgres::PgPoolOptions, types::Uuid};
+use starknet_crypto::FieldElement;
 use std::{env, io::Cursor, sync::Arc};
 use tokio_util::io::ReaderStream;
 
@@ -116,16 +117,18 @@ async fn upload_program(
         println!("Uploading program with version {}", version);
         if version == 1 {
             let casm: CasmContractClass = serde_json::from_slice(&data).unwrap();
-            let program_hash = casm.compiled_class_hash().to_string();
+            let program_hash = casm.compiled_class_hash();
+            let convert = FieldElement::from_bytes_be(&program_hash.to_be_bytes()).unwrap();
+            let program_hash_hex = format!("{:#x}", convert);
+            println!("Program hash: {}", program_hash_hex);
 
-            println!("Program hash: {}", program_hash);
             // Generate a UUID for the id field
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(
                 "INSERT INTO programs (id, hash, code, version) VALUES ($1, $2, $3, $4)",
                 id,
-                program_hash,
+                program_hash_hex,
                 data.as_ref(),
                 version
             )
@@ -148,7 +151,7 @@ async fn upload_program(
 
             let program_hash_hex = format!("{:#x}", program_hash);
             println!("{}", program_hash_hex);
-            // Generate a UUID for the id field
+
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(

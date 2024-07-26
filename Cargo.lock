@@ -1850,6 +1850,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "starknet-crypto",
  "starknet-types-core",
  "tokio",
  "tokio-postgres",
