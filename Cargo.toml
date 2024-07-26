@@ -1,12 +1,18 @@
-[package]
-name = "program_registery"
+[workspace]
+resolver = "2"
+members = ["cli", "."]
+
+
+[workspace.package]
+name = "program-registery"
+description = "Program Registery"
 version = "0.1.0"
 edition = "2021"
 license-file = "LICENSE"
 repository = "https://github.com/HerodotusDev/program_registery"
 
 
-[dependencies]
+[workspace.dependencies]
 axum = { version = "0.7.5", features = ["multipart"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
