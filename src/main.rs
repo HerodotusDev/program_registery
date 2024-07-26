@@ -100,9 +100,11 @@ struct GetProgram {
 async fn upload_program(
     mut multipart: Multipart,
     db_pool: Arc<Pool<sqlx::Postgres>>,
-) -> Result<&'static str, StatusCode> {
+) -> Result<String, StatusCode> {
     let mut version = 0;
     let mut program_data = None;
+    #[allow(unused_assignments)]
+    let mut program_hash_hex = String::new();
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let name = field.name().unwrap_or_default().to_string();
@@ -115,14 +117,13 @@ async fn upload_program(
 
     if let Some(data) = program_data {
         println!("Uploading program with version {}", version);
-        if version == 1 {
+        if version == 2 {
             let casm: CasmContractClass = serde_json::from_slice(&data).unwrap();
             let program_hash = casm.compiled_class_hash();
             let convert = FieldElement::from_bytes_be(&program_hash.to_be_bytes()).unwrap();
-            let program_hash_hex = format!("{:#x}", convert);
+            program_hash_hex = format!("{:#x}", convert);
             println!("Program hash: {}", program_hash_hex);
 
-            // Generate a UUID for the id field
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(
@@ -142,15 +143,14 @@ async fn upload_program(
 
         if version == 0 {
             let program =
-            Program::from_bytes(&data, Some("main"))
-                .expect("Could not load program. Did you compile the sample programs? Run `make test` in the root directory.");
+                Program::from_bytes(&data, Some("main")).expect("Could not load program.");
             let stripped_program = program.get_stripped_program().unwrap();
             let bootloader_version = 0;
             let program_hash = compute_program_hash_chain(&stripped_program, bootloader_version)
                 .expect("Failed to compute program hash.");
 
-            let program_hash_hex = format!("{:#x}", program_hash);
-            println!("{}", program_hash_hex);
+            program_hash_hex = format!("{:#x}", program_hash);
+            println!("Program Hash: {}", program_hash_hex);
 
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
@@ -167,10 +167,12 @@ async fn upload_program(
             if result.is_err() {
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
+        } else {
+            return Err(StatusCode::BAD_REQUEST);
         }
     } else {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    Ok("success")
+    Ok(program_hash_hex)
 }

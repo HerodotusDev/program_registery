@@ -14,6 +14,12 @@ curl --location 'http://127.0.0.1:3000/upload-program' \
 --form 'version="0"'
 ```
 
+response:
+
+```sh
+0x343995a543ac64616d33fa77670cfa4e498691c96c2d964a0a07181dff4ce81
+```
+
 ## /get-program
 
 ```sh
