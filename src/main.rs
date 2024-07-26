@@ -33,6 +33,7 @@ async fn main() {
         .connect(&database_url)
         .await
         .expect("Failed to create pool.");
+
     // Run migrations
     sqlx::migrate!("./migrations")
         .run(&pool)
@@ -59,7 +60,6 @@ async fn main() {
         )
         .layer(DefaultBodyLimit::disable());
 
-    // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
@@ -168,7 +168,6 @@ async fn upload_program(
                 return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
         }
-        // Add other version handling if needed
     } else {
         return Err(StatusCode::BAD_REQUEST);
     }

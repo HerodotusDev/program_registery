@@ -1,5 +1,11 @@
 # Program Registrey
 
+## run migration
+
+```sh
+sqlx migrate run
+```
+
 ## /upload-program
 
 ```sh
