@@ -81,10 +81,10 @@ async fn get_program(
     let body = Body::from_stream(stream);
 
     let response = Response::builder()
-        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_TYPE, "application/json")
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", program_hash),
+            format!("attachment; filename=\"{}.json\"", program_hash),
         )
         .body(body)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
