@@ -1,3 +1,5 @@
+#![deny(unused_crate_dependencies)]
+
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Query},
