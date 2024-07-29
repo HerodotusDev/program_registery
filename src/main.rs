@@ -15,7 +15,7 @@ use serde::Deserialize;
 use sqlx::Pool;
 use sqlx::{postgres::PgPoolOptions, types::Uuid};
 use starknet_crypto::FieldElement;
-use std::{env, io::Cursor, sync::Arc};
+use std::{collections::HashSet, env, io::Cursor, sync::Arc};
 use tokio_util::io::ReaderStream;
 
 #[tokio::main]
@@ -146,11 +146,8 @@ async fn upload_program(
         let name = field.name().unwrap_or_default().to_string();
         if name == "program" {
             let raw_data = field.bytes().await.unwrap();
-            let compiler_version = get_compiler_version(raw_data.to_vec()).unwrap();
-            println!("Compiler version: {}", compiler_version);
-            version = compiler_version.split('.').collect::<Vec<&str>>()[0]
-                .parse::<i32>()
-                .unwrap();
+            version = get_compiler_version(raw_data.to_vec()).unwrap();
+            println!("Compiler version: {}", version);
             program_data = Some(raw_data);
         }
     }
@@ -164,14 +161,25 @@ async fn upload_program(
             program_hash_hex = format!("{:#x}", convert);
             println!("Program hash: {}", program_hash_hex);
 
+            let mut builtin_set = HashSet::new();
+
+            casm.entry_points_by_type
+                .external
+                .iter()
+                .for_each(|x| builtin_set.extend(x.clone().builtins));
+
+            println!("{:?}", builtin_set);
+            let builtin_vec: Vec<String> = builtin_set.iter().map(|x| x.to_string()).collect();
+
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(
-                "INSERT INTO programs (id, hash, code, version) VALUES ($1, $2, $3, $4)",
+                "INSERT INTO programs (id, hash, code, version, builtins) VALUES ($1, $2, $3, $4, $5)",
                 id,
                 program_hash_hex,
                 data.as_ref(),
-                version
+                version,
+                &builtin_vec
             )
             .execute(&*db_pool)
             .await;
@@ -183,8 +191,13 @@ async fn upload_program(
             let program =
                 Program::from_bytes(&data, Some("main")).expect("Could not load program.");
             let stripped_program = program.get_stripped_program().unwrap();
-            let bootloader_version = 0;
-            let program_hash = compute_program_hash_chain(&stripped_program, bootloader_version)
+            let builtins: &Vec<String> = &stripped_program
+                .builtins
+                .iter()
+                .map(|x| x.to_str().to_string())
+                .collect();
+            println!("{:?}", builtins);
+            let program_hash = compute_program_hash_chain(&stripped_program, version as usize)
                 .expect("Failed to compute program hash.");
 
             program_hash_hex = format!("{:#x}", program_hash);
@@ -193,11 +206,12 @@ async fn upload_program(
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(
-                "INSERT INTO programs (id, hash, code, version) VALUES ($1, $2, $3, $4)",
+                "INSERT INTO programs (id, hash, code, version, builtins) VALUES ($1, $2, $3, $4, $5)",
                 id,
                 program_hash_hex,
                 data.as_ref(),
-                version
+                version,
+                builtins
             )
             .execute(&*db_pool)
             .await;
@@ -213,7 +227,7 @@ async fn upload_program(
     Ok(program_hash_hex)
 }
 
-fn get_compiler_version(bytes: Vec<u8>) -> Result<String, Box<dyn std::error::Error>> {
+fn get_compiler_version(bytes: Vec<u8>) -> Result<i32, Box<dyn std::error::Error>> {
     let json_str = String::from_utf8(bytes)?;
 
     // Parse the JSON string to a serde_json::Value
@@ -221,7 +235,11 @@ fn get_compiler_version(bytes: Vec<u8>) -> Result<String, Box<dyn std::error::Er
 
     // Access the "compiler_version" field and extract its value
     if let Some(version) = json_value.get("compiler_version").and_then(|v| v.as_str()) {
-        Ok(version.to_string())
+        let full_compiler_version = version.to_string();
+        let version = full_compiler_version.split('.').collect::<Vec<&str>>()[0]
+            .parse::<i32>()
+            .unwrap();
+        Ok(version)
     } else {
         Err("compiler_version field not found or not a uint".into())
     }
