@@ -44,3 +44,21 @@ response:
 curl --location --request GET 'http://127.0.0.1:3000/get-program?program_hash=0x343995a543ac64616d33fa77670cfa4e498691c96c2d964a0a07181dff4ce81' \
 --header 'Content-Type: application/json'
 ```
+
+response will be json file of target program
+
+## /get-metadata
+
+request:
+
+```sh
+curl --location 'http://127.0.0.1:3000/get-metadata?program_hash=0x294cd7453d81e9633bbf295082f5a7e51e2a8714e3c59e70fc5969ea41e3da5'
+```
+
+response:
+
+```sh
+{
+    "version": 2
+}
+```

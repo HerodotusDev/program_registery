@@ -60,6 +60,13 @@ async fn main() {
                 move |multipart| upload_program(multipart, db_pool)
             }),
         )
+        .route(
+            "/get-metadata",
+            get({
+                let db_pool = Arc::clone(&db_pool);
+                move |program| get_metadata(program, db_pool)
+            }),
+        )
         .layer(DefaultBodyLimit::disable());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -67,7 +74,7 @@ async fn main() {
 }
 
 async fn get_program(
-    program: Query<GetProgram>,
+    program: Query<GetViaProgramHash>,
     db_pool: Arc<Pool<sqlx::Postgres>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let program_hash = &program.program_hash;
@@ -94,8 +101,35 @@ async fn get_program(
     Ok(response)
 }
 
+async fn get_metadata(
+    program: Query<GetViaProgramHash>,
+    db_pool: Arc<Pool<sqlx::Postgres>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let program_hash = &program.program_hash;
+
+    let row = sqlx::query!("SELECT version FROM programs WHERE hash = $1", program_hash)
+        .fetch_one(&*db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let version = row.version;
+
+    // Create a JSON response with the version
+    let json_response = serde_json::json!({ "version": version });
+    let body = Body::from(
+        serde_json::to_string(&json_response).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+    );
+
+    let response = Response::builder()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(response)
+}
+
 #[derive(Deserialize)]
-struct GetProgram {
+struct GetViaProgramHash {
     program_hash: String,
 }
 
