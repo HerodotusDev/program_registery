@@ -6,10 +6,22 @@ The program hash is a unique calculation of the program bytecode. Based on the c
 
 Our main motivation is to have a registry of Cairo programs so that we can retrieve the compiled Cairo program using the given program hash.
 
-## run migration
+## Quick start (local)
+
+### 1. environment variable
+
+Make sure to have `DATABASE_URL` on `.env` file.
+
+### 2. run migration
 
 ```sh
 sqlx migrate run
+```
+
+### 3. run program
+
+```sh
+cargo run -r
 ```
 
 ## /upload-program
