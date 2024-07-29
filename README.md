@@ -59,6 +59,7 @@ response:
 
 ```sh
 {
+    "layout": "recursive_with_poseidon",
     "version": 2
 }
 ```
