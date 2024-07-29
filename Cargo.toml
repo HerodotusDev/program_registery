@@ -24,3 +24,4 @@ uuid = { version = "1", features = ["v4"] }
 cairo-vm = { version = '1.0.0-rc6' }
 starknet-crypto = "0.6.1"
 lazy_static = "1.5.0"
+tracing = "0.1.40"

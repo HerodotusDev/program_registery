@@ -21,6 +21,7 @@ use sqlx::{postgres::PgPoolOptions, types::Uuid};
 use starknet_crypto::FieldElement;
 use std::{collections::HashSet, env, io::Cursor, sync::Arc};
 use tokio_util::io::ReaderStream;
+use tracing::info;
 
 pub mod layout_info;
 
@@ -143,10 +144,27 @@ struct GetViaProgramHash {
     program_hash: String,
 }
 
+enum CairoCompilerVersion {
+    Zero = 0,
+    Two = 2,
+}
+
+impl From<i32> for CairoCompilerVersion {
+    fn from(value: i32) -> Self {
+        if value == 0 {
+            Self::Zero
+        } else if value == 2 {
+            return Self::Two;
+        } else {
+            panic!("Unsupported Compiler Version")
+        }
+    }
+}
+
 async fn upload_program(
     mut multipart: Multipart,
     db_pool: Arc<Pool<sqlx::Postgres>>,
-) -> Result<String, StatusCode> {
+) -> Result<String, (StatusCode, String)> {
     let mut version: i32 = 0;
     let mut program_data = None;
     #[allow(unused_assignments)]
@@ -157,87 +175,85 @@ async fn upload_program(
         if name == "program" {
             let raw_data = field.bytes().await.unwrap();
             version = get_compiler_version(raw_data.to_vec()).unwrap();
-            println!("Compiler version: {}", version);
+            info!("Compiler version: {}", version);
             program_data = Some(raw_data);
         }
     }
 
     if let Some(data) = program_data {
-        println!("Uploading program with version {}", version);
-        if version == 2 {
-            let casm: CasmContractClass = serde_json::from_slice(&data).unwrap();
-            let program_hash = casm.compiled_class_hash();
-            let convert = FieldElement::from_bytes_be(&program_hash.to_be_bytes()).unwrap();
-            program_hash_hex = format!("{:#x}", convert);
-            println!("Program hash: {}", program_hash_hex);
+        info!("Uploading program with version {}", version);
+        let version = CairoCompilerVersion::from(version);
+        let (id, code, version, builtins, layout) = match version {
+            CairoCompilerVersion::Two => {
+                let casm: CasmContractClass = serde_json::from_slice(&data).unwrap();
+                let program_hash = casm.compiled_class_hash();
+                let convert = FieldElement::from_bytes_be(&program_hash.to_be_bytes()).unwrap();
+                program_hash_hex = format!("{:#x}", convert);
+                info!("Program hash: {}", program_hash_hex);
 
-            let mut builtin_set = HashSet::new();
+                let mut builtin_set = HashSet::new();
 
-            casm.entry_points_by_type
-                .external
-                .iter()
-                .for_each(|x| builtin_set.extend(x.clone().builtins));
+                casm.entry_points_by_type
+                    .external
+                    .iter()
+                    .for_each(|x| builtin_set.extend(x.clone().builtins));
 
-            println!("{:?}", builtin_set);
-            let builtin_vec: Vec<String> = builtin_set.iter().map(|x| x.to_string()).collect();
-            println!("Builtins: {:?}", builtin_vec);
-            let layout = get_best_cairo_layout(&builtin_vec);
-            println!("Layout: {:?}", layout);
+                let builtin_vec: Vec<String> = builtin_set.iter().map(|x| x.to_string()).collect();
+                info!("Builtins: {:?}", builtin_vec);
+                let layout = get_best_cairo_layout(&builtin_vec);
+                info!("Layout: {:?}", layout);
 
-            let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
-
-            let result = sqlx::query!(
-                "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
-                id,
-                program_hash_hex,
-                data.as_ref(),
-                version,
-                &builtin_vec,
-                layout.to_str()
-            )
-            .execute(&*db_pool)
-            .await;
-
-            if result.is_err() {
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
+                (
+                    id,
+                    data.as_ref(),
+                    version as i32,
+                    builtin_vec,
+                    layout.to_str(),
+                )
             }
-        } else if version == 0 {
-            let program =
-                Program::from_bytes(&data, Some("main")).expect("Could not load program.");
-            let stripped_program = program.get_stripped_program().unwrap();
-            let builtins: &Vec<String> = &stripped_program
-                .builtins
-                .iter()
-                .map(|x| x.to_str().to_string())
-                .collect();
-            println!("Builtins: {:?}", builtins);
-            let layout = get_best_cairo_layout(builtins);
-            println!("Layout: {:?}", layout);
-            let program_hash = compute_program_hash_chain(&stripped_program, version as usize)
-                .expect("Failed to compute program hash.");
+            CairoCompilerVersion::Zero => {
+                let program =
+                    Program::from_bytes(&data, Some("main")).expect("Could not load program.");
+                let stripped_program = program.get_stripped_program().unwrap();
+                let builtins: Vec<String> = stripped_program
+                    .builtins
+                    .iter()
+                    .map(|x| x.to_str().to_string())
+                    .collect();
+                info!("Builtins: {:?}", builtins);
+                let layout = get_best_cairo_layout(&builtins);
+                info!("Layout: {:?}", layout);
+                let program_hash = compute_program_hash_chain(&stripped_program, 0)
+                    .expect("Failed to compute program hash.");
 
-            program_hash_hex = format!("{:#x}", program_hash);
-            println!("Program Hash: {}", program_hash_hex);
+                program_hash_hex = format!("{:#x}", program_hash);
+                info!("Program Hash: {}", program_hash_hex);
 
-            let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
-
-            let result = sqlx::query!(
-                "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
-                id,
-                program_hash_hex,
-                data.as_ref(),
-                version,
-                builtins,
-                layout.to_str()
-            )
-            .execute(&*db_pool)
-            .await;
-
-            if result.is_err() {
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
+                (id, data.as_ref(), version as i32, builtins, layout.to_str())
             }
-        } else {
-            return Err(StatusCode::BAD_REQUEST);
+        };
+
+        let result = sqlx::query!(
+            "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
+            id, program_hash_hex, code, version, &builtins, layout
+        )
+        .execute(&*db_pool)
+        .await;
+
+        if let Err(err) = result {
+            match err.as_database_error() {
+                Some(pg_err) if pg_err.code() == Some(std::borrow::Cow::Borrowed("23505")) => {
+                    return Err((
+                        StatusCode::CONFLICT,
+                        "Duplicate data error: The entry already exists.".to_string(),
+                    ));
+                }
+                _ => {
+                    return Err((StatusCode::BAD_REQUEST, err.to_string()));
+                }
+            };
         }
     }
 
@@ -265,7 +281,7 @@ fn get_compiler_version(bytes: Vec<u8>) -> Result<i32, Box<dyn std::error::Error
 fn get_best_cairo_layout(builtins: &[String]) -> LayoutName {
     let required_builtins: HashSet<BuiltinName> = builtins
         .iter()
-        .filter_map(|b| BuiltinName::from_str(b)) // Convert strings to BuiltinName
+        .filter_map(|b| BuiltinName::from_str(b))
         .collect();
 
     let mut best_layout = None;
@@ -278,5 +294,5 @@ fn get_best_cairo_layout(builtins: &[String]) -> LayoutName {
         }
     }
 
-    best_layout.unwrap_or(LayoutName::starknet_with_keccak) // Default layout if none found
+    best_layout.unwrap_or(LayoutName::starknet_with_keccak)
 }
