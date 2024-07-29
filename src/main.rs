@@ -9,14 +9,20 @@ use axum::{
     Router,
 };
 use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
-use cairo_vm::{program_hash::compute_program_hash_chain, types::program::Program};
+use cairo_vm::{
+    program_hash::compute_program_hash_chain,
+    types::{builtin_name::BuiltinName, layout_name::LayoutName, program::Program},
+};
 use dotenv::dotenv;
+use layout_info::LAYOUT_INFO;
 use serde::Deserialize;
 use sqlx::Pool;
 use sqlx::{postgres::PgPoolOptions, types::Uuid};
 use starknet_crypto::FieldElement;
 use std::{collections::HashSet, env, io::Cursor, sync::Arc};
 use tokio_util::io::ReaderStream;
+
+pub mod layout_info;
 
 #[tokio::main]
 async fn main() {
@@ -107,15 +113,19 @@ async fn get_metadata(
 ) -> Result<impl IntoResponse, StatusCode> {
     let program_hash = &program.program_hash;
 
-    let row = sqlx::query!("SELECT version FROM programs WHERE hash = $1", program_hash)
-        .fetch_one(&*db_pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row = sqlx::query!(
+        "SELECT version, layout FROM programs WHERE hash = $1",
+        program_hash
+    )
+    .fetch_one(&*db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let version = row.version;
+    let layout = row.layout;
 
     // Create a JSON response with the version
-    let json_response = serde_json::json!({ "version": version });
+    let json_response = serde_json::json!({ "version": version, "layout": layout});
     let body = Body::from(
         serde_json::to_string(&json_response).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     );
@@ -170,16 +180,20 @@ async fn upload_program(
 
             println!("{:?}", builtin_set);
             let builtin_vec: Vec<String> = builtin_set.iter().map(|x| x.to_string()).collect();
+            println!("Builtins: {:?}", builtin_vec);
+            let layout = get_best_cairo_layout(&builtin_vec);
+            println!("Layout: {:?}", layout);
 
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(
-                "INSERT INTO programs (id, hash, code, version, builtins) VALUES ($1, $2, $3, $4, $5)",
+                "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
                 id,
                 program_hash_hex,
                 data.as_ref(),
                 version,
-                &builtin_vec
+                &builtin_vec,
+                layout.to_str()
             )
             .execute(&*db_pool)
             .await;
@@ -196,7 +210,9 @@ async fn upload_program(
                 .iter()
                 .map(|x| x.to_str().to_string())
                 .collect();
-            println!("{:?}", builtins);
+            println!("Builtins: {:?}", builtins);
+            let layout = get_best_cairo_layout(builtins);
+            println!("Layout: {:?}", layout);
             let program_hash = compute_program_hash_chain(&stripped_program, version as usize)
                 .expect("Failed to compute program hash.");
 
@@ -206,12 +222,13 @@ async fn upload_program(
             let id = Uuid::from_bytes(uuid::Uuid::new_v4().to_bytes_le());
 
             let result = sqlx::query!(
-                "INSERT INTO programs (id, hash, code, version, builtins) VALUES ($1, $2, $3, $4, $5)",
+                "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
                 id,
                 program_hash_hex,
                 data.as_ref(),
                 version,
-                builtins
+                builtins,
+                layout.to_str()
             )
             .execute(&*db_pool)
             .await;
@@ -243,4 +260,23 @@ fn get_compiler_version(bytes: Vec<u8>) -> Result<i32, Box<dyn std::error::Error
     } else {
         Err("compiler_version field not found or not a uint".into())
     }
+}
+
+fn get_best_cairo_layout(builtins: &[String]) -> LayoutName {
+    let required_builtins: HashSet<BuiltinName> = builtins
+        .iter()
+        .filter_map(|b| BuiltinName::from_str(b)) // Convert strings to BuiltinName
+        .collect();
+
+    let mut best_layout = None;
+    let mut min_trace_columns = u32::MAX;
+
+    for (layout_name, (n_trace_columns, layout_builtins)) in LAYOUT_INFO.iter() {
+        if layout_builtins.is_superset(&required_builtins) && *n_trace_columns < min_trace_columns {
+            min_trace_columns = *n_trace_columns;
+            best_layout = Some(*layout_name);
+        }
+    }
+
+    best_layout.unwrap_or(LayoutName::starknet_with_keccak) // Default layout if none found
 }
