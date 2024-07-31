@@ -14,6 +14,7 @@ lazy_static! {
             (
                 15,
                 HashSet::from([
+                    BuiltinName::output,
                     BuiltinName::pedersen,
                     BuiltinName::range_check,
                     BuiltinName::ecdsa,
@@ -29,6 +30,7 @@ lazy_static! {
             (
                 10,
                 HashSet::from([
+                    BuiltinName::output,
                     BuiltinName::pedersen,
                     BuiltinName::range_check,
                     BuiltinName::bitwise,
@@ -40,6 +42,7 @@ lazy_static! {
             (
                 10,
                 HashSet::from([
+                    BuiltinName::output,
                     BuiltinName::pedersen,
                     BuiltinName::range_check,
                     BuiltinName::ecdsa,
@@ -54,6 +57,7 @@ lazy_static! {
             (
                 8,
                 HashSet::from([
+                    BuiltinName::output,
                     BuiltinName::pedersen,
                     BuiltinName::range_check,
                     BuiltinName::bitwise,
