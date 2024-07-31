@@ -1,0 +1,26 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+
+[tasks.migrate]
+script = ["source local.env", "sqlx migrate run"]
+description = "Run migration with current up db"
+
+[tasks.db-up]
+script = ["pwd", "ls -la", "docker compose -f db.docker-compose.yaml up -d"]
+description = "Up db"
+
+[tasks.db-down]
+script = ["pwd", "ls -la", "docker compose -f db.docker-compose.yaml down -d"]
+description = "Down db"
+
+[tasks.server-up]
+script = ["pwd", "ls -la", "docker compose -f server.docker-compose.yaml up -d"]
+description = "Up server"
+
+[tasks.server-down]
+script = [
+    "pwd",
+    "ls -la",
+    "docker compose -f server.docker-compose.yaml down -d",
+]
+description = "Down server"
