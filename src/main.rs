@@ -74,10 +74,15 @@ async fn main() {
                 move |program| get_metadata(program, db_pool)
             }),
         )
+        .route("/is-alive", get(is_alive))
         .layer(DefaultBodyLimit::disable());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn is_alive() -> impl IntoResponse {
+    (StatusCode::OK, "Alive")
 }
 
 async fn get_program(
