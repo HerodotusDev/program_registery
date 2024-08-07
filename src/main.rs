@@ -5,7 +5,7 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Query},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
@@ -74,10 +74,35 @@ async fn main() {
                 move |program| get_metadata(program, db_pool)
             }),
         )
+        .route(
+            "/delete-program",
+            delete({
+                let db_pool = Arc::clone(&db_pool);
+                move |program| delete_program(program, db_pool)
+            }),
+        )
         .layer(DefaultBodyLimit::disable());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn delete_program(
+    program: Query<GetViaProgramHash>,
+    db_pool: Arc<Pool<sqlx::Postgres>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let program_hash = &program.program_hash;
+
+    let result = sqlx::query!("DELETE FROM programs WHERE hash = $1", program_hash)
+        .execute(&*db_pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::OK)
 }
 
 async fn get_program(
