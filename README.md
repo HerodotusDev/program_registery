@@ -38,6 +38,12 @@ response:
 0x343995a543ac64616d33fa77670cfa4e498691c96c2d964a0a07181dff4ce81
 ```
 
+## /delete-program
+
+```sh
+curl --location --request DELETE 'http://localhost:3000/delete-program?program_hash=0x64041a339b1edd10de83cf031cfa938645450f971d2527c90d4c2ce68d7d412'
+```
+
 ## /get-program
 
 ```sh
