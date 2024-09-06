@@ -270,10 +270,7 @@ async fn upload_program(
         if let Err(err) = result {
             match err.as_database_error() {
                 Some(pg_err) if pg_err.code() == Some(std::borrow::Cow::Borrowed("23505")) => {
-                    return Err((
-                        StatusCode::CONFLICT,
-                        "Duplicate data error: The entry already exists.".to_string(),
-                    ));
+                    return Ok(program_hash_hex);
                 }
                 _ => {
                     return Err((StatusCode::BAD_REQUEST, err.to_string()));
