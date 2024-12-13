@@ -16,6 +16,7 @@ use cairo_vm::{
 use dotenv::dotenv;
 use layout_info::LAYOUT_INFO;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use sqlx::Pool;
 use sqlx::{postgres::PgPoolOptions, types::Uuid};
 use starknet_crypto::FieldElement;
@@ -117,12 +118,15 @@ async fn get_program(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let code = row.code;
+    let download_hash = format!("{:x}", Sha256::digest(&code));
+    info!("Download hash: {}", download_hash);
 
     let stream = ReaderStream::new(Cursor::new(code));
     let body = Body::from_stream(stream);
 
     let response = Response::builder()
-        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(header::CONTENT_ENCODING, "identity")
         .header(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}.json\"", program_hash),
@@ -157,7 +161,8 @@ async fn get_metadata(
     );
 
     let response = Response::builder()
-        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(header::CONTENT_ENCODING, "identity")
         .body(body)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -259,6 +264,9 @@ async fn upload_program(
                 (id, data.as_ref(), version as i32, builtins, layout.to_str())
             }
         };
+
+        let upload_hash = format!("{:x}", Sha256::digest(code));
+        info!("Upload hash: {}", upload_hash);
 
         let result = sqlx::query!(
             "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
