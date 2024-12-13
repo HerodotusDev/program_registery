@@ -16,7 +16,6 @@ use cairo_vm::{
 use dotenv::dotenv;
 use layout_info::LAYOUT_INFO;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use sqlx::Pool;
 use sqlx::{postgres::PgPoolOptions, types::Uuid};
 use starknet_crypto::FieldElement;
@@ -118,8 +117,6 @@ async fn get_program(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let code = row.code;
-    let download_hash = format!("{:x}", Sha256::digest(&code));
-    info!("Download hash: {}", download_hash);
 
     let stream = ReaderStream::new(Cursor::new(code));
     let body = Body::from_stream(stream);
@@ -265,9 +262,6 @@ async fn upload_program(
             }
         };
 
-        let upload_hash = format!("{:x}", Sha256::digest(code));
-        info!("Upload hash: {}", upload_hash);
-
         let result = sqlx::query!(
             "INSERT INTO programs (id, hash, code, version, builtins, layout) VALUES ($1, $2, $3, $4, $5, $6)",
             id, program_hash_hex, code, version, &builtins, layout
@@ -281,6 +275,7 @@ async fn upload_program(
                     return Ok(program_hash_hex);
                 }
                 _ => {
+                    println!("Error: {:?}", err);
                     return Err((StatusCode::BAD_REQUEST, err.to_string()));
                 }
             };

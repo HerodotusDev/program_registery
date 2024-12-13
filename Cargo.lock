@@ -1775,7 +1775,6 @@ dependencies = [
  "lazy_static",
  "serde",
  "serde_json",
- "sha2",
  "sqlx",
  "starknet-crypto",
  "tokio",
